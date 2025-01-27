@@ -13,7 +13,7 @@ import pygame
 
 
 class NPuzzleEnv(gym.Env):
-    metadata = {'render.modes': ['human']}
+    metadata = {'render_modes': ['human']}
 
     def __init__(self, render_mode=None, size=4):
         self.size = size
@@ -21,7 +21,7 @@ class NPuzzleEnv(gym.Env):
         # Observation
         self.observation_space = spaces.Dict(
             {
-                "board": spaces.Box(low=0, high=self.size**2 - 1, dtype=int)
+                "board": spaces.Box(low=0, high=factorial(self.size**2) - 1, dtype=int)
             }
         )
 
@@ -51,7 +51,7 @@ class NPuzzleEnv(gym.Env):
     def reset(self, seed=None):
         super().reset(seed=seed)
 
-        self.board_idx = self.np_random.integers(0, self.size**2, size=1, dtype=int)
+        self.board_idx = self.np_random.integers(0, factorial(self.size**2), size=1, dtype=int)
         self.board_arrangement = self.cantor_inverse_expansion(self.board_idx)
 
         observation = self._get_obs()
@@ -107,10 +107,11 @@ class NPuzzleEnv(gym.Env):
         return observation, reward, terminated, False, info
 
     def render(self):
-        print("Current Board:")
-        for i in range(self.size):
-            print(self.board_arrangement[i*self.size:(i+1)*self.size])
-        print()
+        # print("Current Board:")
+        # for i in range(self.size):
+        #     print(self.board_arrangement[i*self.size:(i+1)*self.size])
+        # print()
+        pass
     
     def _render_frame(self):
         if self.window is None and self.render_mode == "human":
@@ -123,12 +124,44 @@ class NPuzzleEnv(gym.Env):
         pix_square_size = 100
         canvas = pygame.Surface((self.size*pix_square_size, self.size*pix_square_size))
         canvas.fill((255, 255, 255))
+
+        for x in range(self.size + 1):
+            pygame.draw.line(
+                canvas,
+                0,
+                (0, pix_square_size * x),
+                (self.size*pix_square_size, pix_square_size * x),
+                width=3,
+            )
+            pygame.draw.line(
+                canvas,
+                0,
+                (pix_square_size * x, 0),
+                (pix_square_size * x, self.size*pix_square_size),
+                width=3,
+            )
+
+        for i in range(self.size):
+            for j in range(self.size):
+                num = self.board_arrangement[i*self.size+j]
+                if num == self.size**2:
+                    continue
+                pygame.draw.rect(canvas, (0, 0, 0), (j*pix_square_size, i*pix_square_size, pix_square_size, pix_square_size), 1)
+                font = pygame.font.Font(None, 36)
+                text = font.render(str(num), True, (0, 0, 0))
+                canvas.blit(text, (j*pix_square_size+pix_square_size//2-10, i*pix_square_size+pix_square_size//2-10))
         
+        self.window.blit(canvas, (0, 0))
+        pygame.display.flip()
+
+        self.clock.tick(3)   
 
     
     def close(self):
-        return None
-        
+        if self.window is not None:
+            pygame.display.quit()
+            pygame.quit()
+            
     def cantor_expansion(self, nums):
         """将排列映射为一个整数"""
         n = self.size**2
