@@ -6,7 +6,7 @@ from gymnasium import spaces
 class DigitalHuRongEnv(gym.Env):
     metadata = {'render_modes': ['human', 'rgb_array'], 'render_fps': 4}
     
-    def __init__(self, size=2, render_mode=None):
+    def __init__(self, size=3, render_mode=None):
         super().__init__()
         self.size = size
         self.window_size = 512
@@ -14,11 +14,13 @@ class DigitalHuRongEnv(gym.Env):
         self.observation_space = spaces.Box(low=0, high=size*size-1, shape=(size*size,), dtype=np.int64)
         
         self._action_to_direction = {
-            0: (-1, 0),
-            1: (0, 1),
+            0: (0, 1),
+            1: (-1, 0),
             2: (1, 0),
             3: (0, -1),
         }
+
+        self.last_action = None
         
         self.render_mode = render_mode
         self.window = None
@@ -62,7 +64,7 @@ class DigitalHuRongEnv(gym.Env):
         return 0 <= new_blank[0] < self.size and 0 <= new_blank[1] < self.size
 
     def _move(self, action):
-        direction = self._action_to_direction[action]
+        direction = self._action_to_direction[int(action)]
         new_blank = self.blank_pos + direction
         
         if self._is_valid_move(new_blank):
@@ -75,10 +77,17 @@ class DigitalHuRongEnv(gym.Env):
 
     def step(self, action):
         valid = self._move(action)
-        reward = -0.1 if valid else -1
         terminated = np.array_equal(self.board, self.goal)
-        if terminated:
-            reward = 10
+
+        if not valid or (self.last_action is not None and (action + self.last_action == 3)):
+            reward = -100
+        else:
+            if terminated:
+                reward = 100
+            else:
+                reward = 0
+        
+        self.last_action = action
         return self._get_obs(), reward, terminated, False, self._get_info()
 
     def render(self):
@@ -114,8 +123,8 @@ class DigitalHuRongEnv(gym.Env):
             pygame.quit()
 
 class GameInterface:
-    def __init__(self, model=None):
-        self.env = DigitalHuRongEnv(render_mode="human", size=3)  # 确保环境初始化时创建窗口
+    def __init__(self, model=None, size=3):
+        self.env = DigitalHuRongEnv(render_mode="human", size=size)  # 确保环境初始化时创建窗口
         self.model = model
         self.mode = "human"
         if self.model is not None:
@@ -145,6 +154,7 @@ class GameInterface:
                         action = self._key_to_action(event.key)
                         if action is not None:
                             obs, reward, terminated, _, _ = self.env.step(action)
+                            print(reward)
                             if terminated:
                                 print("恭喜完成！")
                                 obs, _ = self.env.reset()
@@ -153,6 +163,7 @@ class GameInterface:
             if self.mode == "auto" and self.model is not None:
                 action, _ = self.model.predict(obs)
                 obs, reward, terminated, _, _ = self.env.step(action)
+                print(reward)
                 self.env.render()
                 if terminated:
                     print("自动模式完成！")
@@ -167,27 +178,45 @@ class GameInterface:
         return {
             pygame.K_UP: 2,
             pygame.K_RIGHT: 3,
-            pygame.K_DOWN: 0,
-            pygame.K_LEFT: 1
+            pygame.K_DOWN: 1,
+            pygame.K_LEFT: 0
         }.get(key, None)
 
 if __name__ == "__main__":
-    class RandomModel:
-        def predict(self, obs):
-            return np.random.randint(4), None
-    
-    # interface = GameInterface(model=RandomModel())
-    interface = GameInterface()
-    interface.run()
+    MODE = "train"  
+    # MODE = "manual"
+    # MODE = "random"
+    MODE = "test"
 
-    # from stable_baselines3 import DQN
+    if MODE == 'random':
+        class RandomModel:
+            def predict(self, obs):
+                return np.random.randint(4), None
+        interface = GameInterface(model=RandomModel())
 
-    # 训练环境使用非渲染模式
-    # train_env = DigitalHuRongEnv(render_mode=None)
-    # model = DQN("MlpPolicy", train_env, verbose=1)
-    # model.learn(total_timesteps=100000)
+    elif MODE == "manual":
+        interface = GameInterface()
+        interface.run()
 
-    # # 测试时使用渲染模式
-    # test_env = DigitalHuRongEnv(render_mode="human")
-    # interface = GameInterface(model=model)
-    # interface.run()
+    elif MODE == "train":
+        from stable_baselines3 import DQN
+        import torch
+        # 训练环境使用非渲染模式
+        train_env = DigitalHuRongEnv(render_mode=None, size=3)
+        policy_kwargs = dict(
+            activation_fn=torch.nn.ReLU,
+            net_arch=[9, 16, 128, 128, 4]
+        )
+        model = DQN("MlpPolicy", train_env, verbose=1, policy_kwargs=policy_kwargs)
+        model.learn(total_timesteps=10000)
+        # 保存模型权重
+        model.save("./dqn_digital_hurong.zip")
+
+    elif MODE == "test":
+        from stable_baselines3 import DQN
+        # 加载模型权重
+        model = DQN.load("./dqn_digital_hurong.zip")
+
+        # 测试时使用渲染模式
+        interface = GameInterface(model=model)
+        interface.run()
