@@ -1,4 +1,5 @@
-from typing import Optional, Tuple, List, Callable
+from typing import Optional, Tuple, List, Callable, Dict, Any
+import numpy as np
 from .board import Board
 import time
 
@@ -16,42 +17,72 @@ class Game:
         self.start_time = None
         self.elapsed_time = 0
         self.is_running = False
+        self.steps = 0
+        self.listeners = []  # 事件监听器列表
         self.callbacks = {
             'on_move': [],
             'on_win': [],
             'on_reset': []
         }
         
-    def start_game(self) -> None:
-        """开始新游戏"""
-        self.board.shuffle()
-        # 确保生成的棋盘状态是可解的
-        while not self.board.is_solvable():
-            self.board.shuffle()
-        self.start_time = time.time()
-        self.is_running = True
-        self._notify('on_reset')
-        
-    def make_move(self, row: int, col: int) -> bool:
+    def add_listener(self, listener: Callable[[str, Dict[str, Any]], None]):
         """
-        执行移动
+        添加事件监听器
         
         Args:
-            row: 要移动的数字的行位置
-            col: 要移动的数字的列位置
+            listener: 监听器函数，接收事件类型和参数
+        """
+        self.listeners.append(listener)
+        
+    def _notify_listeners(self, event_type: str, **kwargs):
+        """
+        通知所有监听器
+        
+        Args:
+            event_type: 事件类型
+            **kwargs: 事件参数
+        """
+        for listener in self.listeners:
+            listener(event_type, **kwargs)
+        
+    def new_game(self):
+        """开始新游戏"""
+        # 重置棋盘状态
+        self.board.reset()
+        # 重置游戏状态
+        self.start_time = time.time()
+        self.elapsed_time = 0
+        self.is_running = True
+        self.steps = 0
+        # 通知监听器
+        self._notify_listeners("game_start")
+        
+    def move(self, row: int, col: int) -> bool:
+        """
+        移动数字
+        
+        Args:
+            row: 行号
+            col: 列号
             
         Returns:
-            bool: 移动是否成功
+            bool: 是否移动成功
         """
         if not self.is_running:
             return False
             
         if self.board.move(row, col):
-            self._notify('on_move')
-            if self.board.is_solved():
-                self.is_running = False
-                self.elapsed_time = time.time() - self.start_time
-                self._notify('on_win')
+            self.steps += 1
+            self._notify_listeners("move")
+            
+            try:
+                # 检查是否完成游戏
+                if self.board.is_solved():
+                    self.is_running = False
+                    self.elapsed_time = time.time() - self.start_time
+                    self._notify_listeners("game_over")
+            except Exception as e:
+                print(f"检查游戏是否完成时出错：{str(e)}")
             return True
         return False
         
@@ -63,7 +94,7 @@ class Game:
         
     def get_moves(self) -> int:
         """获取移动步数"""
-        return self.board.moves
+        return self.steps
         
     def get_board_state(self) -> Tuple[List[List[int]], Tuple[int, int]]:
         """
@@ -76,7 +107,15 @@ class Game:
         
     def reset(self) -> None:
         """重置游戏"""
-        self.start_game()
+        # 重置棋盘状态
+        self.board.reset()
+        # 重置游戏状态
+        self.start_time = time.time()
+        self.elapsed_time = 0
+        self.is_running = True
+        self.steps = 0
+        # 通知监听器
+        self._notify_listeners("game_start")
         
     def register_callback(self, event: str, callback: Callable) -> None:
         """
@@ -98,4 +137,20 @@ class Game:
         """
         if event in self.callbacks:
             for callback in self.callbacks[event]:
-                callback() 
+                callback()
+
+    def undo(self) -> bool:
+        """
+        撤销上一步移动
+        
+        Returns:
+            bool: 是否撤销成功
+        """
+        if not self.is_running:
+            return False
+            
+        if self.board.undo():
+            self.steps -= 1
+            self._notify_listeners("undo")
+            return True
+        return False 
