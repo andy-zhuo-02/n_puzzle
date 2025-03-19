@@ -1,0 +1,45 @@
+# 编译输出文件
+*.o
+*.obj
+*.exe
+*.out
+*.app
+
+# 调试文件
+*.dSYM/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# IDE 相关文件
+.vscode/
+.idea/
+*.user
+*.userosscache
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.VC.opendb
+
+# 临时文件
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# 构建目录
+build/
+Debug/
+Release/
+x64/
+Win32/
+
+# 依赖目录
+node_modules/
+vendor/
+
+# 日志文件
+*.log 
